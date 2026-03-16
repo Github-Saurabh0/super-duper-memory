@@ -32,3 +32,4 @@ Activity Log
 2026-03-15T11:23:59+05:30 - Add transfer destination validation - p90orxmkpi
 2026-03-15T12:51:08+05:30 - Improve worker thread management - d91m1fkgh7
 2026-03-16T16:12:55+05:30 - Add repository unit tests - nurb5wpeqsi
+2026-03-16T14:41:05+05:30 - Add customer table constraints - qcugyhr7pb
