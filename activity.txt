@@ -132,3 +132,4 @@ Activity Log
 2026-04-09T18:38:16+05:30 - Configure Maven build for Java 17 - 8guqzio1zyu
 2026-04-09T17:00:53+05:30 - Add database configuration properties - lv3f0hc2i2p
 2026-04-10T12:04:13+05:30 - Add account number database index - an5xczgnrgf
+2026-04-10T19:42:00+05:30 - Add account table constraints - yo3vn9ked8q
