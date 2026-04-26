@@ -207,3 +207,4 @@ Activity Log
 2026-04-25T19:48:33+05:30 - Add customer collection manager - mvul7ymsm7
 2026-04-25T18:36:10+05:30 - Add customer unique identifier - 61lbkzf2p3n
 2026-04-26T13:09:49+05:30 - Add transfer transaction strategy - vh1vujsrdwq
+2026-04-26T16:38:31+05:30 - Add total withdrawal calculation - fa4dl8jj135
