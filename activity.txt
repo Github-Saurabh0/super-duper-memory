@@ -249,3 +249,4 @@ Activity Log
 2026-05-09T10:11:02+05:30 - Improve dependency separation - y9ahi6glt5o
 2026-05-09T14:50:41+05:30 - Prevent invalid self transfers - r24j9326f7b
 2026-05-09T15:39:59+05:30 - Create customers database table - c448abtigzp
+2026-05-09T10:46:59+05:30 - Add JDBC resource cleanup - 3o249d5f42r
