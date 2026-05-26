@@ -314,3 +314,4 @@ Activity Log
 2026-05-25T12:58:56+05:30 - Refactor analytics with Java Streams - 58wfk37qhjp
 2026-05-26T17:12:06+05:30 - Add banking service exception handling - ldl9gxnvxel
 2026-05-26T14:50:19+05:30 - Add concurrent transaction validation - fsqeq6xx0p4
+2026-05-26T19:47:16+05:30 - Add customer table constraints - pmhmvi84s7
