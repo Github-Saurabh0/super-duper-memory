@@ -319,3 +319,4 @@ Activity Log
 2026-05-26T16:05:40+05:30 - Add customer transaction statistics - tzp8pstgd5
 2026-05-26T15:22:03+05:30 - Create fraud events table - lzfq0y3ypm
 2026-05-27T13:06:52+05:30 - Add deposit transaction strategy - de8zfrua6qa
+2026-05-27T11:57:49+05:30 - Add customer account ownership mapping - yglfdo7hizd
