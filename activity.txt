@@ -332,3 +332,4 @@ Activity Log
 2026-05-28T17:48:25+05:30 - Add executor task monitoring - jx2mebdvhy
 2026-05-28T10:46:42+05:30 - Add large transaction detection rule - r2n87ddqjw
 2026-05-28T19:26:48+05:30 - Implement pluggable fraud rules - doynr27buj
+2026-05-29T13:22:02+05:30 - Add fraud event audit logging - ze1y9av0ull
