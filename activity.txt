@@ -378,3 +378,4 @@ Activity Log
 2026-06-08T16:43:48+05:30 - Add customer table constraints - d03inxyhc4b
 2026-06-08T18:41:36+05:30 - Add reusable analytics collectors - 9sjkem8z2a
 2026-06-08T11:15:33+05:30 - Add thread-safe audit logging - uv1uv15q2y
+2026-06-08T12:04:26+05:30 - Add customer ID indexing - 148qwied00s
