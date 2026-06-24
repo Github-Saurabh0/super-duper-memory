@@ -439,3 +439,4 @@ Activity Log
 2026-06-24T16:37:06+05:30 - Add customer ID indexing - 6quobgk7eye
 2026-06-24T10:08:27+05:30 - Create account factory - 5pqpu3od58j
 2026-06-24T13:50:53+05:30 - Add JDBC rollback handling - d3t8jnyrodi
+2026-06-24T17:49:17+05:30 - Add repeated transfer detection rule - ipoq63qema
