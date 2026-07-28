@@ -594,3 +594,4 @@ Activity Log
 2026-07-28T17:24:27+05:30 - Add generic repository update operation - u5l6sj6ik7
 2026-07-28T18:01:50+05:30 - Refactor transaction validation flow - mg4hx45wyse
 2026-07-28T14:17:30+05:30 - Create audit events table - n7w1j29whl
+2026-07-28T16:34:49+05:30 - Add customer table constraints - jv0iiihevp7
