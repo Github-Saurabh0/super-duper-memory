@@ -29,3 +29,4 @@ public class Main {
         System.out.println("Risk: " + detector.evaluate(transaction.getAmount()));
     }
 }
+     
