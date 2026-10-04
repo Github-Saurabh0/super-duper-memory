@@ -1,4 +1,4 @@
-# Enterprise Banking System — Core Java
+# Enterprise Banking System - Core Java
 
 An advanced Core Java banking system designed to demonstrate enterprise-style Java fundamentals without Spring Boot.
 
