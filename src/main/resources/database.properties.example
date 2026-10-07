@@ -1,0 +1,3 @@
+db.url=jdbc:mysql://localhost:3306/enterprise_banking
+db.username=root
+db.password=YOUR_PASSWORD
