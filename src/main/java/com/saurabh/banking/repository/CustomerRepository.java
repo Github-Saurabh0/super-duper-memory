@@ -13,8 +13,8 @@ import java.util.List;
 public class CustomerRepository implements Repository<Long, Customer> {
 
     private static final String INSERT_SQL = """
-            INSERT INTO customers (name, email, phone)
-            VALUES (?, ?, ?)
+            INSERT INTO customers (id, name, email, phone)
+            VALUES (?, ?, ?, ?)
             """;
 
     private static final String FIND_BY_ID_SQL = """
@@ -103,9 +103,10 @@ public class CustomerRepository implements Repository<Long, Customer> {
              PreparedStatement statement =
                      connection.prepareStatement(INSERT_SQL)) {
 
-            statement.setString(1, customer.getName());
-            statement.setString(2, customer.getEmail());
-            statement.setString(3, customer.getPhone());
+            statement.setLong(1, customer.getId());
+            statement.setString(2, customer.getName());
+            statement.setString(3, customer.getEmail());
+            statement.setString(4, customer.getPhone());
 
             statement.executeUpdate();
 
