@@ -1,3 +1,4 @@
+
 package com.saurabh.banking.repository;
 
 import com.saurabh.banking.customer.Customer;
@@ -13,6 +14,11 @@ class CustomerRepositoryTest {
     @BeforeEach
     void setUp() {
         repository = new CustomerRepository();
+
+        // Clean up records left by previous test runs.
+        repository.delete(90001L);
+        repository.delete(90002L);
+        repository.delete(90003L);
     }
 
     @Test
@@ -31,18 +37,12 @@ class CustomerRepositoryTest {
 
         assertNotNull(result);
         assertEquals(90001L, result.getId());
-        assertEquals(
-                "Test Customer",
-                result.getName()
-        );
+        assertEquals("Test Customer", result.getName());
         assertEquals(
                 "test.customer@example.com",
                 result.getEmail()
         );
-        assertEquals(
-                "9876543210",
-                result.getPhone()
-        );
+        assertEquals("9876543210", result.getPhone());
     }
 
     @Test
@@ -57,8 +57,10 @@ class CustomerRepositoryTest {
 
         repository.save(customer);
 
-        assertFalse(
-                repository.findAll().isEmpty()
+        assertTrue(
+                repository.findAll().stream()
+                        .anyMatch(existing ->
+                                existing.getId().equals(90002L))
         );
     }
 
@@ -74,15 +76,11 @@ class CustomerRepositoryTest {
 
         repository.save(customer);
 
-        Customer savedCustomer =
-                repository.findById(90003L);
-
+        Customer savedCustomer = repository.findById(90003L);
         assertNotNull(savedCustomer);
 
         repository.delete(90003L);
 
-        assertNull(
-                repository.findById(90003L)
-        );
+        assertNull(repository.findById(90003L));
     }
 }
