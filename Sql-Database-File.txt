@@ -1,0 +1,73 @@
+SELECT DATABASE();
+
+USE enterprise_banking;
+
+CREATE TABLE IF NOT EXISTS customers (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(150) NOT NULL,
+    email VARCHAR(200) UNIQUE NOT NULL,
+    phone VARCHAR(30),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+DELETE FROM customers
+WHERE id IN (90001, 90002, 90003);
+
+SELECT * FROM customers;
+
+
+USE enterprise_banking;
+
+DELETE FROM customers
+WHERE id IN (90001, 90002, 90003);
+
+SELECT id, name, email
+FROM customers;
+
+
+
+
+
+USE enterprise_banking;
+
+CREATE TABLE IF NOT EXISTS accounts (
+    account_number BIGINT PRIMARY KEY,
+    customer_id BIGINT NOT NULL,
+    account_type VARCHAR(30) NOT NULL,
+    balance DECIMAL(19,2) NOT NULL DEFAULT 0,
+    FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+SHOW TABLES;
+
+
+USE enterprise_banking;
+
+SHOW CREATE TABLE transactions;
+
+
+USE enterprise_banking;
+
+CREATE TABLE IF NOT EXISTS transactions (
+    transaction_id VARCHAR(64) PRIMARY KEY,
+    from_account BIGINT NULL,
+    to_account BIGINT NULL,
+    amount DECIMAL(19,2) NOT NULL,
+    transaction_type VARCHAR(40) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    CONSTRAINT fk_transactions_from_account
+        FOREIGN KEY (from_account)
+        REFERENCES accounts(account_number),
+    CONSTRAINT fk_transactions_to_account
+        FOREIGN KEY (to_account)
+        REFERENCES accounts(account_number)
+);
+
+SHOW TABLES;
+
+SHOW CREATE TABLE transactions;
+
+
+
+
