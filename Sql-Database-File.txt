@@ -69,5 +69,18 @@ SHOW TABLES;
 SHOW CREATE TABLE transactions;
 
 
+USE enterprise_banking;
+SHOW TABLES LIKE 'audit_logs';
+
+
+USE enterprise_banking;
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    event_text TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+SHOW TABLES LIKE 'audit_logs';
 
 
