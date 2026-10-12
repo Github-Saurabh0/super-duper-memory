@@ -84,3 +84,28 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 SHOW TABLES LIKE 'audit_logs';
 
 
+
+USE enterprise_banking;
+SHOW CREATE TABLE fraud_alerts;
+
+USE enterprise_banking;
+
+CREATE TABLE IF NOT EXISTS fraud_alerts (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    transaction_id VARCHAR(64),
+    risk_level VARCHAR(30) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+SHOW CREATE TABLE fraud_alerts;
+
+USE enterprise_banking;
+
+CREATE TABLE IF NOT EXISTS fraud_alerts (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    transaction_id VARCHAR(64),
+    risk_level VARCHAR(30) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+
