@@ -1,3 +1,4 @@
+
 package com.saurabh.banking;
 
 import com.saurabh.banking.account.Account;
@@ -5,6 +6,7 @@ import com.saurabh.banking.account.SavingsAccount;
 import com.saurabh.banking.audit.AuditLogger;
 import com.saurabh.banking.customer.Customer;
 import com.saurabh.banking.fraud.FraudDetector;
+import com.saurabh.banking.repository.FraudAlertRepository;
 import com.saurabh.banking.service.BankingService;
 import com.saurabh.banking.transaction.Transaction;
 
@@ -44,7 +46,7 @@ public class Main {
         // Withdrawal
         banking.withdraw(account, 1500);
 
-        // Transfer between two different accounts
+        // Transfer
         Transaction transaction = banking.transfer(
                 account,
                 destinationAccount,
@@ -52,47 +54,50 @@ public class Main {
                 "TRANSFER"
         );
 
-        // Fraud detection
+        // Fraud detection and alert persistence
         FraudDetector detector = new FraudDetector();
+        FraudAlertRepository fraudAlertRepository =
+                new FraudAlertRepository();
+
+        String riskLevel = detector.evaluate(transaction.amount());
+
+        if ("HIGH_RISK".equals(riskLevel)
+                || "MEDIUM_RISK".equals(riskLevel)) {
+            fraudAlertRepository.save(
+                    transaction.transactionId(),
+                    riskLevel
+            );
+        }
 
         // Display customer information
         System.out.println("=================================");
         System.out.println("   ENTERPRISE BANKING SYSTEM");
         System.out.println("=================================");
 
+        System.out.println("Customer: " + customer.getName());
+
         System.out.println(
-                "Customer: " + customer.getName()
+                "Source Account Balance: " + account.getBalance()
         );
 
         System.out.println(
-                "Source Account Balance: " +
-                        account.getBalance()
+                "Destination Account Balance: "
+                        + destinationAccount.getBalance()
         );
 
         System.out.println(
-                "Destination Account Balance: " +
-                        destinationAccount.getBalance()
+                "Transaction ID: " + transaction.transactionId()
         );
 
         System.out.println(
-                "Transaction ID: " +
-                        transaction.transactionId()
+                "Transaction Amount: " + transaction.amount()
         );
 
         System.out.println(
-                "Transaction Amount: " +
-                        transaction.amount()
+                "Transaction Type: " + transaction.type()
         );
 
-        System.out.println(
-                "Transaction Type: " +
-                        transaction.type()
-        );
-
-        System.out.println(
-                "Risk: " +
-                        detector.evaluate(transaction.amount())
-        );
+        System.out.println("Risk: " + riskLevel);
 
         System.out.println("=================================");
     }
