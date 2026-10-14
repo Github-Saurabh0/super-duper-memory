@@ -8,6 +8,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 
 
@@ -23,6 +25,14 @@ public class FraudAlertRepository {
             FROM fraud_alerts
             ORDER BY created_at DESC, id DESC
             """;
+
+
+private static final String COUNT_BY_RISK_SQL = """
+        SELECT risk_level, COUNT(*) AS alert_count
+        FROM fraud_alerts
+        GROUP BY risk_level
+        """;
+
 
     public void save(String transactionId, String riskLevel) {
         if (transactionId == null || transactionId.isBlank()) {
@@ -81,5 +91,35 @@ public class FraudAlertRepository {
                     "Failed to retrieve fraud alerts", e
             );
         }
+
     }
+
+public Map<String, Long> countByRiskLevel() {
+    Map<String, Long> counts = new LinkedHashMap<>();
+
+    counts.put("HIGH_RISK", 0L);
+    counts.put("MEDIUM_RISK", 0L);
+
+    try (Connection connection =
+                 DatabaseConnection.getConnection();
+         PreparedStatement statement =
+                 connection.prepareStatement(COUNT_BY_RISK_SQL);
+         ResultSet resultSet = statement.executeQuery()) {
+
+        while (resultSet.next()) {
+            counts.put(
+                    resultSet.getString("risk_level"),
+                    resultSet.getLong("alert_count")
+            );
+        }
+
+        return counts;
+
+    } catch (SQLException e) {
+        throw new IllegalStateException(
+                "Failed to count fraud alerts by risk level", e
+        );
+    }
+}
+
 }
