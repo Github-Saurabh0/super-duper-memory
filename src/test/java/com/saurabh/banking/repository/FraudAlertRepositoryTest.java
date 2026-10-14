@@ -7,6 +7,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.UUID;
+import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -94,4 +96,38 @@ class FraudAlertRepositoryTest {
             }
         }
     }
+
+@Test
+void countByRiskLevelIncludesSavedAlerts() throws Exception {
+    String highRiskId = "DAY10-H-" + UUID.randomUUID();
+    String mediumRiskId = "DAY10-M-" + UUID.randomUUID();
+
+    try {
+        repository.save(highRiskId, "HIGH_RISK");
+        repository.save(mediumRiskId, "MEDIUM_RISK");
+
+        Map<String, Long> counts = repository.countByRiskLevel();
+
+        org.junit.jupiter.api.Assertions.assertTrue(
+                counts.get("HIGH_RISK") >= 1,
+                "At least one high-risk alert should exist"
+        );
+
+        org.junit.jupiter.api.Assertions.assertTrue(
+                counts.get("MEDIUM_RISK") >= 1,
+                "At least one medium-risk alert should exist"
+        );
+
+    } finally {
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "DELETE FROM fraud_alerts WHERE transaction_id IN (?, ?)")) {
+
+            statement.setString(1, highRiskId);
+            statement.setString(2, mediumRiskId);
+            statement.executeUpdate();
+        }
+    }
+}
+
 }
