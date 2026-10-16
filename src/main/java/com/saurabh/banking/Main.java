@@ -9,6 +9,7 @@ import com.saurabh.banking.fraud.FraudDetector;
 import com.saurabh.banking.repository.FraudAlertRepository;
 import com.saurabh.banking.service.BankingService;
 import com.saurabh.banking.transaction.Transaction;
+import com.saurabh.banking.service.FraudAnalyticsService;
 
 public class Main {
 
@@ -100,5 +101,23 @@ public class Main {
         System.out.println("Risk: " + riskLevel);
 
         System.out.println("=================================");
+
+        // Fraud analytics report
+        FraudAnalyticsService analyticsService =
+                new FraudAnalyticsService(fraudAlertRepository);
+
+        var report = analyticsService.generateReport();
+
+        System.out.println("---------------------------------");
+        System.out.println("       FRAUD ANALYTICS REPORT");
+        System.out.println("---------------------------------");
+        System.out.println("High Risk Alerts: "
+                + report.get("HIGH_RISK"));
+        System.out.println("Medium Risk Alerts: "
+                + report.get("MEDIUM_RISK"));
+        System.out.println("Total Fraud Alerts: "
+                + report.get("TOTAL_ALERTS"));
+
     }
+
 }
