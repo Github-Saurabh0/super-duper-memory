@@ -7,12 +7,12 @@ import com.saurabh.banking.audit.AuditLogger;
 import com.saurabh.banking.customer.Customer;
 import com.saurabh.banking.fraud.FraudDetector;
 import com.saurabh.banking.repository.FraudAlertRepository;
+import com.saurabh.banking.repository.TransactionRepository;
 import com.saurabh.banking.service.BankingService;
 import com.saurabh.banking.service.FraudAnalyticsService;
 import com.saurabh.banking.transaction.Transaction;
 import com.saurabh.banking.util.TransactionAnalytics;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -20,7 +20,6 @@ public class Main {
 
     public static void main(String[] args) {
 
-        // Create customer
         Customer customer = new Customer(
                 1L,
                 "Saurabh Kushwaha",
@@ -28,7 +27,6 @@ public class Main {
                 "9999999999"
         );
 
-        // Create accounts
         Account account = new SavingsAccount(
                 10001L,
                 customer,
@@ -41,34 +39,19 @@ public class Main {
                 5000.0
         );
 
-        // Initialize banking service
-        BankingService banking =
-                new BankingService(new AuditLogger());
+        // Initialize repositories and banking service
+        TransactionRepository transactionRepository =
+                new TransactionRepository();
 
-        // Collect successful transactions for analytics
-        List<Transaction> transactions = new ArrayList<>();
+        BankingService banking = new BankingService(
+                new AuditLogger(),
+                transactionRepository
+        );
 
-        // Deposit
+        // Perform banking operations
         banking.deposit(account, 5000);
-
-        transactions.add(Transaction.create(
-                account.getAccountNumber(),
-                null,
-                5000,
-                "DEPOSIT"
-        ));
-
-        // Withdrawal
         banking.withdraw(account, 1500);
 
-        transactions.add(Transaction.create(
-                account.getAccountNumber(),
-                null,
-                1500,
-                "WITHDRAWAL"
-        ));
-
-        // Transfer
         Transaction transaction = banking.transfer(
                 account,
                 destinationAccount,
@@ -76,7 +59,9 @@ public class Main {
                 "TRANSFER"
         );
 
-        transactions.add(transaction);
+        // Fetch actual persisted transaction history
+        List<Transaction> transactions =
+                transactionRepository.findAll();
 
         // Fraud detection and alert persistence
         FraudDetector detector = new FraudDetector();
@@ -93,11 +78,10 @@ public class Main {
             );
         }
 
-        // Display customer information
+        // Display banking information
         System.out.println("=================================");
         System.out.println("   ENTERPRISE BANKING SYSTEM");
         System.out.println("=================================");
-
         System.out.println("Customer: " + customer.getName());
         System.out.println(
                 "Source Account Balance: " + account.getBalance()
@@ -109,21 +93,31 @@ public class Main {
         System.out.println(
                 "Transaction ID: " + transaction.transactionId()
         );
-        System.out.println("Transaction Amount: " + transaction.amount());
-        System.out.println("Transaction Type: " + transaction.type());
+        System.out.println(
+                "Transaction Amount: " + transaction.amount()
+        );
+        System.out.println(
+                "Transaction Type: " + transaction.type()
+        );
         System.out.println("Risk: " + riskLevel);
 
         // Transaction analytics report
-        double totalValue = TransactionAnalytics.totalValue(transactions);
+        double totalValue =
+                TransactionAnalytics.totalValue(transactions);
+
         Map<String, Long> counts =
                 TransactionAnalytics.countByType(transactions);
+
         List<Transaction> highValueTransactions =
                 TransactionAnalytics.highValue(transactions, 1000);
 
         System.out.println("---------------------------------");
         System.out.println("    TRANSACTION ANALYTICS REPORT");
         System.out.println("---------------------------------");
-        System.out.printf("Total Transaction Value: %.2f%n", totalValue);
+        System.out.printf(
+                "Total Transaction Value: %.2f%n",
+                totalValue
+        );
         System.out.println("Transaction Count by Type: " + counts);
         System.out.println("High-Value Transactions (>= 1000):");
 
@@ -144,7 +138,8 @@ public class Main {
         FraudAnalyticsService analyticsService =
                 new FraudAnalyticsService(fraudAlertRepository);
 
-        Map<String, Long> report = analyticsService.generateReport();
+        Map<String, Long> report =
+                analyticsService.generateReport();
 
         System.out.println("---------------------------------");
         System.out.println("       FRAUD ANALYTICS REPORT");
