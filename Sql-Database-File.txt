@@ -109,3 +109,63 @@ CREATE TABLE IF NOT EXISTS fraud_alerts (
 );
 
 
+USE enterprise_banking;
+
+SHOW CREATE TABLE transactions;
+SHOW CREATE TABLE accounts;
+
+USE enterprise_banking;
+
+SHOW CREATE TABLE transactions;
+
+SHOW CREATE TABLE accounts;
+
+SELECT id, name, email
+FROM customers
+WHERE id = 1;
+
+SELECT account_number, customer_id, account_type, balance
+FROM accounts
+WHERE account_number IN (10001, 10002);
+
+
+USE enterprise_banking;
+
+SELECT id, name, email
+FROM customers
+WHERE id = 1;
+
+
+INSERT INTO customers (id, name, email, phone)
+VALUES (1, 'Saurabh Kushwaha', 'saurabh@example.com', '9999999999');
+
+SELECT id, name, email
+FROM customers
+WHERE id = 1;
+
+
+USE enterprise_banking;
+
+INSERT INTO accounts
+    (account_number, customer_id, account_type, balance)
+VALUES
+    (10001, 1, 'SAVINGS', 10000.00),
+    (10002, 1, 'SAVINGS', 5000.00);
+
+
+SELECT account_number, customer_id, account_type, balance
+FROM accounts
+WHERE account_number IN (10001, 10002);
+
+USE enterprise_banking;
+
+SELECT
+    transaction_id,
+    from_account,
+    to_account,
+    amount,
+    transaction_type,
+    created_at
+FROM transactions
+ORDER BY created_at DESC
+LIMIT 10;
