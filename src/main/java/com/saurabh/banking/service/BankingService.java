@@ -1,63 +1,75 @@
+
 package com.saurabh.banking.service;
 
 import com.saurabh.banking.account.Account;
 import com.saurabh.banking.audit.AuditLogger;
 import com.saurabh.banking.exception.InvalidTransactionException;
+import com.saurabh.banking.repository.TransactionRepository;
 import com.saurabh.banking.transaction.Transaction;
+
+import java.util.Objects;
 
 public class BankingService {
 
     private final AuditLogger auditLogger;
+    private final TransactionRepository transactionRepository;
 
+    // Backward-compatible constructor
     public BankingService(AuditLogger auditLogger) {
-        if (auditLogger == null) {
-            throw new IllegalArgumentException(
-                    "AuditLogger cannot be null"
-            );
-        }
+        this(auditLogger, null);
+    }
 
-        this.auditLogger = auditLogger;
+    // Constructor for transaction persistence
+    public BankingService(
+            AuditLogger auditLogger,
+            TransactionRepository transactionRepository
+    ) {
+        this.auditLogger = Objects.requireNonNull(
+                auditLogger,
+                "AuditLogger cannot be null"
+        );
+        this.transactionRepository = transactionRepository;
     }
 
     public void deposit(Account account, double amount) {
-
         validateAccount(account);
-
-        if (amount <= 0) {
-            throw new InvalidTransactionException(
-                    "Deposit amount must be greater than zero"
-            );
-        }
+        validateAmount(amount, "Deposit");
 
         account.deposit(amount);
 
+        Transaction transaction = Transaction.create(
+                null,
+                account.getAccountNumber(),
+                amount,
+                "DEPOSIT"
+        );
+
+        persistTransaction(transaction);
+
         auditLogger.log(
                 "Deposit %.2f into account %d"
-                        .formatted(
-                                amount,
-                                account.getAccountNumber()
-                        )
+                        .formatted(amount, account.getAccountNumber())
         );
     }
 
     public void withdraw(Account account, double amount) {
-
         validateAccount(account);
-
-        if (amount <= 0) {
-            throw new InvalidTransactionException(
-                    "Withdrawal amount must be greater than zero"
-            );
-        }
+        validateAmount(amount, "Withdrawal");
 
         account.withdraw(amount);
 
+        Transaction transaction = Transaction.create(
+                account.getAccountNumber(),
+                null,
+                amount,
+                "WITHDRAWAL"
+        );
+
+        persistTransaction(transaction);
+
         auditLogger.log(
                 "Withdrawal %.2f from account %d"
-                        .formatted(
-                                amount,
-                                account.getAccountNumber()
-                        )
+                        .formatted(amount, account.getAccountNumber())
         );
     }
 
@@ -67,7 +79,6 @@ public class BankingService {
             double amount,
             String type
     ) {
-
         validateAccount(from);
         validateAccount(to);
 
@@ -77,11 +88,7 @@ public class BankingService {
             );
         }
 
-        if (amount <= 0) {
-            throw new InvalidTransactionException(
-                    "Transfer amount must be greater than zero"
-            );
-        }
+        validateAmount(amount, "Transfer");
 
         if (type == null || type.isBlank()) {
             throw new InvalidTransactionException(
@@ -91,35 +98,28 @@ public class BankingService {
 
         Account first =
                 from.getAccountNumber() < to.getAccountNumber()
-                        ? from
-                        : to;
-
-        Account second =
-                first == from
-                        ? to
-                        : from;
+                        ? from : to;
+        Account second = first == from ? to : from;
 
         first.getLock().lock();
         second.getLock().lock();
 
         try {
-
             from.withdraw(amount);
             to.deposit(amount);
-
         } finally {
-
             second.getLock().unlock();
             first.getLock().unlock();
         }
 
-        Transaction transaction =
-                Transaction.create(
-                        from.getAccountNumber(),
-                        to.getAccountNumber(),
-                        amount,
-                        type
-                );
+        Transaction transaction = Transaction.create(
+                from.getAccountNumber(),
+                to.getAccountNumber(),
+                amount,
+                type
+        );
+
+        persistTransaction(transaction);
 
         auditLogger.log(
                 "Transfer " + transaction.transactionId()
@@ -128,8 +128,21 @@ public class BankingService {
         return transaction;
     }
 
-    private void validateAccount(Account account) {
+    private void persistTransaction(Transaction transaction) {
+        if (transactionRepository != null) {
+            transactionRepository.save(transaction);
+        }
+    }
 
+    private void validateAmount(double amount, String operation) {
+        if (!Double.isFinite(amount) || amount <= 0) {
+            throw new InvalidTransactionException(
+                    operation + " amount must be finite and greater than zero"
+            );
+        }
+    }
+
+    private void validateAccount(Account account) {
         if (account == null) {
             throw new InvalidTransactionException(
                     "Account cannot be null"
