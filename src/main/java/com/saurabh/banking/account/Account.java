@@ -38,4 +38,32 @@ public abstract class Account {
     public Customer getOwner() { return owner; }
     public double getBalance() { return balance.doubleValue(); }
     public ReentrantLock getLock() { return lock; }
+
+
+
+public BigDecimal getBalanceSnapshot() {
+    lock.lock();
+    try {
+        return balance;
+    } finally {
+        lock.unlock();
+    }
+}
+
+public void restoreBalance(BigDecimal previousBalance) {
+    if (previousBalance == null) {
+        throw new IllegalArgumentException(
+                "Previous balance cannot be null"
+        );
+    }
+
+    lock.lock();
+    try {
+        balance = previousBalance;
+    } finally {
+        lock.unlock();
+    }
+}
+
+
 }
