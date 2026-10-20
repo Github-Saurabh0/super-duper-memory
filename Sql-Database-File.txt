@@ -169,3 +169,61 @@ SELECT
 FROM transactions
 ORDER BY created_at DESC
 LIMIT 10;
+
+
+USE enterprise_banking;
+
+SHOW CREATE TABLE accounts;
+SHOW CREATE TABLE transactions;
+
+SELECT account_number, customer_id, account_type, balance
+FROM accounts
+ORDER BY account_number;
+
+SELECT transaction_id, from_account, to_account,
+       amount, transaction_type, created_at
+FROM transactions
+ORDER BY created_at DESC
+LIMIT 10;
+
+USE enterprise_banking;
+
+SHOW CREATE TABLE accounts;
+SHOW CREATE TABLE transactions;
+
+
+SHOW CREATE TABLE accounts;
+
+SHOW CREATE TABLE transactions;
+
+SHOW CREATE TABLE accounts;
+
+SHOW CREATE TABLE transactions;
+
+
+USE enterprise_banking;
+
+SELECT
+    TABLE_NAME,
+    COLUMN_NAME,
+    CONSTRAINT_NAME,
+    REFERENCED_TABLE_NAME,
+    REFERENCED_COLUMN_NAME
+FROM information_schema.KEY_COLUMN_USAGE
+WHERE TABLE_SCHEMA = 'enterprise_banking'
+  AND TABLE_NAME IN ('accounts', 'transactions')
+  AND REFERENCED_TABLE_NAME IS NOT NULL
+ORDER BY TABLE_NAME, COLUMN_NAME;
+
+SELECT account_number, balance
+FROM accounts
+WHERE account_number IN (10001, 10002)
+ORDER BY account_number;
+
+
+USE enterprise_banking;
+
+SELECT account_number, balance
+FROM accounts
+WHERE account_number IN (10001, 10002)
+ORDER BY account_number;
