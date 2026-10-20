@@ -139,6 +139,56 @@ public class TransactionRepository
         }
     }
 
+
+public void save(Connection connection, Transaction transaction)
+        throws SQLException {
+
+    if (connection == null) {
+        throw new IllegalArgumentException(
+                "Connection cannot be null"
+        );
+    }
+
+    if (transaction == null) {
+        throw new IllegalArgumentException(
+                "Transaction cannot be null"
+        );
+    }
+
+    try (PreparedStatement statement =
+                 connection.prepareStatement(INSERT_SQL)) {
+
+        statement.setString(1, transaction.transactionId());
+
+        if (transaction.fromAccount() == null) {
+            statement.setNull(2, Types.BIGINT);
+        } else {
+            statement.setLong(2, transaction.fromAccount());
+        }
+
+        if (transaction.toAccount() == null) {
+            statement.setNull(3, Types.BIGINT);
+        } else {
+            statement.setLong(3, transaction.toAccount());
+        }
+
+        statement.setBigDecimal(
+                4,
+                java.math.BigDecimal.valueOf(transaction.amount())
+        );
+
+        statement.setString(5, transaction.type());
+
+        statement.setTimestamp(
+                6,
+                Timestamp.valueOf(transaction.timestamp())
+        );
+
+        statement.executeUpdate();
+    }
+}
+
+
     @Override
     public void delete(String id) {
         if (id == null || id.isBlank()) {
