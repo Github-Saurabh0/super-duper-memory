@@ -174,6 +174,59 @@ public class AccountRepository implements Repository<Long, Account> {
         }
     }
 
+
+
+
+    public void updateBalance(
+            Connection connection,
+            Long accountNumber,
+            java.math.BigDecimal balance
+    ) throws SQLException {
+
+        if (connection == null) {
+            throw new IllegalArgumentException(
+                    "Connection cannot be null"
+            );
+        }
+
+        if (accountNumber == null) {
+            throw new IllegalArgumentException(
+                    "Account number cannot be null"
+            );
+        }
+
+        if (balance == null || balance.signum() < 0) {
+            throw new IllegalArgumentException(
+                    "Balance cannot be null or negative"
+            );
+        }
+
+        String sql = """
+                UPDATE accounts
+                SET balance = ?
+                WHERE account_number = ?
+                """;
+
+        try (PreparedStatement statement =
+                     connection.prepareStatement(sql)) {
+
+            statement.setBigDecimal(1, balance);
+            statement.setLong(2, accountNumber);
+
+            int updatedRows = statement.executeUpdate();
+
+            if (updatedRows != 1) {
+                throw new SQLException(
+                        "Expected to update one account, but updated "
+                                + updatedRows
+                );
+            }
+        }
+    }
+
+
+
+
     private String getAccountType(Account account) {
 
         if (account instanceof SavingsAccount) {
