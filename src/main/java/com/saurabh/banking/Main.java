@@ -12,6 +12,7 @@ import com.saurabh.banking.service.BankingService;
 import com.saurabh.banking.service.FraudAnalyticsService;
 import com.saurabh.banking.transaction.Transaction;
 import com.saurabh.banking.util.TransactionAnalytics;
+import com.saurabh.banking.repository.AccountRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -39,14 +40,21 @@ public class Main {
                 5000.0
         );
 
+
         // Initialize repositories and banking service
+        AccountRepository accountRepository =
+                new AccountRepository();
+
         TransactionRepository transactionRepository =
                 new TransactionRepository();
 
         BankingService banking = new BankingService(
                 new AuditLogger(),
-                transactionRepository
+                transactionRepository,
+                accountRepository
         );
+
+
 
         // Perform banking operations
         banking.deposit(account, 5000);
