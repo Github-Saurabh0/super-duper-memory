@@ -1,11 +1,12 @@
 package com.saurabh.banking;
 
 
-import com.saurabh.banking.exception.InvalidTransactionException;
 import com.saurabh.banking.account.SavingsAccount;
 import com.saurabh.banking.audit.AuditLogger;
 import com.saurabh.banking.customer.Customer;
+import com.saurabh.banking.exception.InvalidTransactionException;
 import com.saurabh.banking.service.BankingService;
+import com.saurabh.banking.transaction.Transaction;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -164,5 +165,68 @@ void zeroTransferShouldFail() {
             )
     );
 }
+
+
+    @Test
+    void successfulTransferShouldUpdateBothBalances() {
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123"
+        );
+
+        SavingsAccount from = new SavingsAccount(100L, customer, 1000);
+        SavingsAccount to = new SavingsAccount(200L, customer, 500);
+
+        BankingService banking = new BankingService(new AuditLogger());
+
+        Transaction transaction = banking.transfer(
+                from, to, 300, "TRANSFER"
+        );
+
+        assertNotNull(transaction);
+        assertEquals(700.0, from.getBalance(), 0.001);
+        assertEquals(800.0, to.getBalance(), 0.001);
+        assertEquals("TRANSFER", transaction.type());
+    }
+
+    @Test
+    void insufficientBalanceTransferShouldPreserveBothBalances() {
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123"
+        );
+
+        SavingsAccount from = new SavingsAccount(100L, customer, 100);
+        SavingsAccount to = new SavingsAccount(200L, customer, 500);
+
+        BankingService banking = new BankingService(new AuditLogger());
+
+        assertThrows(
+                RuntimeException.class,
+                () -> banking.transfer(from, to, 300, "TRANSFER")
+        );
+
+        assertEquals(100.0, from.getBalance(), 0.001);
+        assertEquals(500.0, to.getBalance(), 0.001);
+    }
+
+    @Test
+    void invalidTransferTypeShouldPreserveBothBalances() {
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123"
+        );
+
+        SavingsAccount from = new SavingsAccount(100L, customer, 1000);
+        SavingsAccount to = new SavingsAccount(200L, customer, 500);
+
+        BankingService banking = new BankingService(new AuditLogger());
+
+        assertThrows(
+                InvalidTransactionException.class,
+                () -> banking.transfer(from, to, 200, " ")
+        );
+
+        assertEquals(1000.0, from.getBalance(), 0.001);
+        assertEquals(500.0, to.getBalance(), 0.001);
+    }
+
 
 }

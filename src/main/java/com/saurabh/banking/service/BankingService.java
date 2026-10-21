@@ -28,28 +28,24 @@ public class BankingService {
     // Backward-compatible constructor with transaction persistence.
     public BankingService(
             AuditLogger auditLogger,
-            TransactionRepository transactionRepository
-    ) {
+            TransactionRepository transactionRepository) {
         this(auditLogger, transactionRepository, null);
     }
 
     // Database-enabled constructor.
     public BankingService(
-        AuditLogger auditLogger,
-        TransactionRepository transactionRepository,
-        AccountRepository accountRepository
-) {
+            AuditLogger auditLogger,
+            TransactionRepository transactionRepository,
+            AccountRepository accountRepository) {
         this.auditLogger = Objects.requireNonNull(
                 auditLogger,
-                "AuditLogger cannot be null"
-        );
+                "AuditLogger cannot be null");
         this.transactionRepository = transactionRepository;
         this.accountRepository = accountRepository;
 
         if ((transactionRepository == null) != (accountRepository == null)) {
             throw new IllegalArgumentException(
-                    "Both repositories must be provided for database mode"
-            );
+                    "Both repositories must be provided for database mode");
         }
     }
 
@@ -61,6 +57,7 @@ public class BankingService {
         first.getLock().lock();
 
         BigDecimal previousBalance = account.getBalanceSnapshot();
+        boolean persisted = false;
 
         try {
             account.deposit(amount);
@@ -69,17 +66,17 @@ public class BankingService {
                     null,
                     account.getAccountNumber(),
                     amount,
-                    "DEPOSIT"
-            );
+                    "DEPOSIT");
 
-            persistOperation(account, null, transaction);
+           persisted = persistOperation(account, null, transaction);
 
             auditLogger.log(
                     "Deposit %.2f into account %d"
-                            .formatted(amount, account.getAccountNumber())
-            );
+                            .formatted(amount, account.getAccountNumber()));
         } catch (RuntimeException exception) {
-            account.restoreBalance(previousBalance);
+            if (!persisted) {
+                account.restoreBalance(previousBalance);
+            }
             throw exception;
         } finally {
             first.getLock().unlock();
@@ -92,6 +89,7 @@ public class BankingService {
 
         account.getLock().lock();
         BigDecimal previousBalance = account.getBalanceSnapshot();
+        boolean persisted = false;
 
         try {
             account.withdraw(amount);
@@ -100,17 +98,17 @@ public class BankingService {
                     account.getAccountNumber(),
                     null,
                     amount,
-                    "WITHDRAWAL"
-            );
+                    "WITHDRAWAL");
 
-            persistOperation(account, null, transaction);
+            persisted = persistOperation(account, null, transaction);
 
             auditLogger.log(
                     "Withdrawal %.2f from account %d"
-                            .formatted(amount, account.getAccountNumber())
-            );
+                            .formatted(amount, account.getAccountNumber()));
         } catch (RuntimeException exception) {
-            account.restoreBalance(previousBalance);
+            if (!persisted) {
+                account.restoreBalance(previousBalance);
+            }
             throw exception;
         } finally {
             account.getLock().unlock();
@@ -121,27 +119,25 @@ public class BankingService {
             Account from,
             Account to,
             double amount,
-            String type
-    ) {
+            String type) {
         validateAccount(from);
         validateAccount(to);
 
         if (from.getAccountNumber().equals(to.getAccountNumber())) {
             throw new InvalidTransactionException(
-                    "Source and destination accounts must be different"
-            );
+                    "Source and destination accounts must be different");
         }
 
         validateAmount(amount, "Transfer");
 
         if (type == null || type.isBlank()) {
             throw new InvalidTransactionException(
-                    "Transfer type is required"
-            );
+                    "Transfer type is required");
         }
 
         Account first = from.getAccountNumber() < to.getAccountNumber()
-                ? from : to;
+                ? from
+                : to;
         Account second = first == from ? to : from;
 
         first.getLock().lock();
@@ -149,6 +145,7 @@ public class BankingService {
 
         BigDecimal fromPrevious = from.getBalanceSnapshot();
         BigDecimal toPrevious = to.getBalanceSnapshot();
+        boolean persisted = false;
 
         try {
             from.withdraw(amount);
@@ -158,19 +155,18 @@ public class BankingService {
                     from.getAccountNumber(),
                     to.getAccountNumber(),
                     amount,
-                    type
-            );
+                    type);
 
-            persistOperation(from, to, transaction);
+            persisted = persistOperation(from, to, transaction);
 
-            auditLogger.log(
-                    "Transfer " + transaction.transactionId()
-            );
+            auditLogger.log("Transfer " + transaction.transactionId());
 
             return transaction;
         } catch (RuntimeException exception) {
-            from.restoreBalance(fromPrevious);
-            to.restoreBalance(toPrevious);
+            if (!persisted) {
+                from.restoreBalance(fromPrevious);
+                to.restoreBalance(toPrevious);
+            }
             throw exception;
         } finally {
             second.getLock().unlock();
@@ -178,54 +174,67 @@ public class BankingService {
         }
     }
 
-    private void persistOperation(
+    private boolean persistOperation(
             Account firstAccount,
             Account secondAccount,
-            Transaction transaction
-    ) {
-        // In-memory mode preserves compatibility with existing tests.
+            Transaction transaction) {
+
         if (transactionRepository == null) {
-            return;
+            return false;
         }
 
-        try (Connection connection = DatabaseConnection.getConnection()) {
+        Connection connection = null;
+        boolean committed = false;
+
+        try {
+            connection = DatabaseConnection.getConnection();
             connection.setAutoCommit(false);
 
-            try {
+            accountRepository.updateBalance(
+                    connection,
+                    firstAccount.getAccountNumber(),
+                    BigDecimal.valueOf(firstAccount.getBalance()));
+
+            if (secondAccount != null) {
                 accountRepository.updateBalance(
                         connection,
-                        firstAccount.getAccountNumber(),
-                        BigDecimal.valueOf(firstAccount.getBalance())
-                );
+                        secondAccount.getAccountNumber(),
+                        BigDecimal.valueOf(secondAccount.getBalance()));
+            }
 
-                if (secondAccount != null) {
-                    accountRepository.updateBalance(
-                            connection,
-                            secondAccount.getAccountNumber(),
-                            BigDecimal.valueOf(secondAccount.getBalance())
-                    );
-                }
+            transactionRepository.save(connection, transaction);
 
-                transactionRepository.save(connection, transaction);
+            connection.commit();
+            committed = true;
+            return true;
 
-                connection.commit();
-            } catch (SQLException | RuntimeException exception) {
+        } catch (SQLException | RuntimeException exception) {
+            if (connection != null && !committed) {
                 try {
                     connection.rollback();
                 } catch (SQLException rollbackException) {
                     exception.addSuppressed(rollbackException);
                 }
-
-                throw new IllegalStateException(
-                        "Database transaction failed",
-                        exception
-                );
             }
-        } catch (SQLException exception) {
+
             throw new IllegalStateException(
-                    "Unable to open or close database transaction",
-                    exception
-            );
+                    "Database transaction failed",
+                    exception);
+
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException closeException) {
+                    if (!committed) {
+                        throw new IllegalStateException(
+                                "Failed to close database connection",
+                                closeException);
+                    }
+                    // Commit already succeeded. Do not treat close failure
+                    // as a failed database operation.
+                }
+            }
         }
     }
 
@@ -233,22 +242,19 @@ public class BankingService {
         if (!Double.isFinite(amount) || amount <= 0) {
             throw new InvalidTransactionException(
                     operation
-                            + " amount must be finite and greater than zero"
-            );
+                            + " amount must be finite and greater than zero");
         }
     }
 
     private void validateAccount(Account account) {
         if (account == null) {
             throw new InvalidTransactionException(
-                    "Account cannot be null"
-            );
+                    "Account cannot be null");
         }
 
         if (account.getAccountNumber() == null) {
             throw new InvalidTransactionException(
-                    "Account number cannot be null"
-            );
+                    "Account number cannot be null");
         }
     }
 }
