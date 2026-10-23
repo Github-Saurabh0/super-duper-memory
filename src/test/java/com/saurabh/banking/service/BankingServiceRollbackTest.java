@@ -99,4 +99,105 @@ class BankingServiceRollbackTest {
         assertTrue(rollbackCalled.get(), "Rollback should be called");
         assertTrue(closeCalled.get(), "Connection should be closed");
     }
+
+
+    
+@Test
+void transferShouldRollbackAndRestoreBothBalancesWhenSecondUpdateFails() {
+    AtomicBoolean rollbackCalled = new AtomicBoolean(false);
+    AtomicBoolean closeCalled = new AtomicBoolean(false);
+    AtomicBoolean transactionSaveCalled = new AtomicBoolean(false);
+    AtomicBoolean firstUpdateCompleted = new AtomicBoolean(false);
+
+    Connection connection = (Connection) Proxy.newProxyInstance(
+            Connection.class.getClassLoader(),
+            new Class<?>[]{Connection.class},
+            (proxy, method, args) -> {
+                switch (method.getName()) {
+                    case "setAutoCommit":
+                        return null;
+                    case "commit":
+                        return null;
+                    case "rollback":
+                        rollbackCalled.set(true);
+                        return null;
+                    case "close":
+                        closeCalled.set(true);
+                        return null;
+                    case "isClosed":
+                        return closeCalled.get();
+                    case "isWrapperFor":
+                        return false;
+                    case "unwrap":
+                        throw new SQLException("Not a wrapper");
+                    case "toString":
+                        return "TestConnection";
+                    default:
+                        throw new UnsupportedOperationException(
+                                "Unexpected Connection call: "
+                                        + method.getName());
+                }
+            });
+
+    Customer customer = new Customer(
+            1L, "Test User", "test@example.com", "123");
+
+    SavingsAccount from = new SavingsAccount(100L, customer, 1000);
+    SavingsAccount to = new SavingsAccount(200L, customer, 500);
+
+    AccountRepository accountRepository = new AccountRepository() {
+        @Override
+        public void updateBalance(
+                Connection conn,
+                Long accountNumber,
+                java.math.BigDecimal balance) throws SQLException {
+
+            assertSame(connection, conn);
+
+            if (accountNumber.equals(100L)) {
+                firstUpdateCompleted.set(true);
+                return;
+            }
+
+            if (accountNumber.equals(200L)) {
+                throw new SQLException("Simulated second account update failure");
+            }
+
+            fail("Unexpected account number: " + accountNumber);
+        }
+    };
+
+    TransactionRepository transactionRepository =
+            new TransactionRepository() {
+                @Override
+                public void save(
+                        Connection conn,
+                        com.saurabh.banking.transaction.Transaction tx)
+                        throws SQLException {
+                    transactionSaveCalled.set(true);
+                    throw new SQLException("Transaction save should not be reached");
+                }
+            };
+
+    BankingService service = new BankingService(
+            new AuditLogger(),
+            transactionRepository,
+            accountRepository,
+            () -> connection);
+
+    assertThrows(
+            IllegalStateException.class,
+            () -> service.transfer(from, to, 200, "TRANSFER"));
+
+    assertTrue(firstUpdateCompleted.get());
+    assertTrue(rollbackCalled.get(), "Rollback should be called");
+    assertTrue(closeCalled.get(), "Connection should be closed");
+    assertFalse(
+            transactionSaveCalled.get(),
+            "Transaction must not be saved after the second update fails");
+
+    assertEquals(1000.0, from.getBalance(), 0.001);
+    assertEquals(500.0, to.getBalance(), 0.001);
+}
+
 }
