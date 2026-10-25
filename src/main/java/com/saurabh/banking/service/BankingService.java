@@ -35,8 +35,7 @@ public class BankingService {
                 auditLogger,
                 transactionRepository,
                 null,
-                DatabaseConnection::getConnection
-        );
+                DatabaseConnection::getConnection);
     }
 
     // Database-enabled constructor.
@@ -48,8 +47,7 @@ public class BankingService {
                 auditLogger,
                 transactionRepository,
                 accountRepository,
-                DatabaseConnection::getConnection
-        );
+                DatabaseConnection::getConnection);
     }
 
     // Constructor with injectable connection provider for testing.
@@ -61,22 +59,18 @@ public class BankingService {
 
         this.auditLogger = Objects.requireNonNull(
                 auditLogger,
-                "AuditLogger cannot be null"
-        );
+                "AuditLogger cannot be null");
 
         this.transactionRepository = transactionRepository;
         this.accountRepository = accountRepository;
 
         this.connectionProvider = Objects.requireNonNull(
                 connectionProvider,
-                "ConnectionProvider cannot be null"
-        );
+                "ConnectionProvider cannot be null");
 
-        if ((transactionRepository == null)
-                != (accountRepository == null)) {
+        if ((transactionRepository == null) != (accountRepository == null)) {
             throw new IllegalArgumentException(
-                    "Both repositories must be provided for database mode"
-            );
+                    "Both repositories must be provided for database mode");
         }
     }
 
@@ -97,15 +91,13 @@ public class BankingService {
                     null,
                     account.getAccountNumber(),
                     amount,
-                    "DEPOSIT"
-            );
+                    "DEPOSIT");
 
             persisted = persistOperation(account, null, transaction);
 
             auditLogger.log(
                     "Deposit %.2f into account %d"
-                            .formatted(amount, account.getAccountNumber())
-            );
+                            .formatted(amount, account.getAccountNumber()));
 
         } catch (RuntimeException exception) {
             if (!persisted) {
@@ -134,15 +126,13 @@ public class BankingService {
                     account.getAccountNumber(),
                     null,
                     amount,
-                    "WITHDRAWAL"
-            );
+                    "WITHDRAWAL");
 
             persisted = persistOperation(account, null, transaction);
 
             auditLogger.log(
                     "Withdrawal %.2f from account %d"
-                            .formatted(amount, account.getAccountNumber())
-            );
+                            .formatted(amount, account.getAccountNumber()));
 
         } catch (RuntimeException exception) {
             if (!persisted) {
@@ -166,16 +156,14 @@ public class BankingService {
 
         if (from.getAccountNumber().equals(to.getAccountNumber())) {
             throw new InvalidTransactionException(
-                    "Source and destination accounts must be different"
-            );
+                    "Source and destination accounts must be different");
         }
 
         validateAmount(amount, "Transfer");
 
         if (type == null || type.isBlank()) {
             throw new InvalidTransactionException(
-                    "Transfer type is required"
-            );
+                    "Transfer type is required");
         }
 
         // Lock accounts in a consistent order to reduce deadlock risk.
@@ -200,8 +188,7 @@ public class BankingService {
                     from.getAccountNumber(),
                     to.getAccountNumber(),
                     amount,
-                    type
-            );
+                    type);
 
             persisted = persistOperation(from, to, transaction);
 
@@ -234,28 +221,24 @@ public class BankingService {
 
         Connection connection = null;
         boolean committed = false;
+        RuntimeException operationFailure = null;
 
         try {
             connection = connectionProvider.getConnection();
             connection.setAutoCommit(false);
 
-            // Update the first account using the shared connection.
             accountRepository.updateBalance(
                     connection,
                     firstAccount.getAccountNumber(),
-                    BigDecimal.valueOf(firstAccount.getBalance())
-            );
+                    BigDecimal.valueOf(firstAccount.getBalance()));
 
-            // Transfer requires updating the second account as well.
             if (secondAccount != null) {
                 accountRepository.updateBalance(
                         connection,
                         secondAccount.getAccountNumber(),
-                        BigDecimal.valueOf(secondAccount.getBalance())
-                );
+                        BigDecimal.valueOf(secondAccount.getBalance()));
             }
 
-            // Save the transaction within the same database transaction.
             transactionRepository.save(connection, transaction);
 
             connection.commit();
@@ -273,10 +256,11 @@ public class BankingService {
                 }
             }
 
-            throw new IllegalStateException(
+            operationFailure = new IllegalStateException(
                     "Database transaction failed",
-                    exception
-            );
+                    exception);
+
+            throw operationFailure;
 
         } finally {
             if (connection != null) {
@@ -285,14 +269,19 @@ public class BankingService {
 
                 } catch (SQLException closeException) {
                     if (!committed) {
-                        throw new IllegalStateException(
+                        IllegalStateException closeFailure = new IllegalStateException(
                                 "Failed to close database connection",
-                                closeException
-                        );
+                                closeException);
+
+                        if (operationFailure != null) {
+                            operationFailure.addSuppressed(closeFailure);
+                        } else {
+                            throw closeFailure;
+                        }
                     }
 
-                    // Commit already succeeded; don't report the operation
-                    // as failed solely because closing the connection failed.
+                    // If commit succeeded, don't report failure only because
+                    // connection closing failed.
                 }
             }
         }
@@ -302,22 +291,19 @@ public class BankingService {
         if (!Double.isFinite(amount) || amount <= 0) {
             throw new InvalidTransactionException(
                     operation
-                            + " amount must be finite and greater than zero"
-            );
+                            + " amount must be finite and greater than zero");
         }
     }
 
     private void validateAccount(Account account) {
         if (account == null) {
             throw new InvalidTransactionException(
-                    "Account cannot be null"
-            );
+                    "Account cannot be null");
         }
 
         if (account.getAccountNumber() == null) {
             throw new InvalidTransactionException(
-                    "Account number cannot be null"
-            );
+                    "Account number cannot be null");
         }
     }
 }
