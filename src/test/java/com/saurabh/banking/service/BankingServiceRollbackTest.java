@@ -17,6 +17,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.saurabh.banking.database.ConnectionProvider;
+
 class BankingServiceRollbackTest {
 
     @Test
@@ -464,6 +466,62 @@ class BankingServiceRollbackTest {
                 saveFailure,
                 exception.getCause(),
                 "Original transaction failure should be preserved");
+    }
+
+    @Test
+    void connectionAcquisitionFailureShouldRestoreBalance() {
+        SQLException connectionFailure = new SQLException("Simulated connection acquisition failure");
+
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123");
+
+        SavingsAccount account = new SavingsAccount(
+                100L, customer, 1000);
+
+        ConnectionProvider failingProvider = () -> {
+            throw connectionFailure;
+        };
+
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) {
+                fail("Account update should not be reached");
+            }
+        };
+
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx) {
+                fail("Transaction save should not be reached");
+            }
+        };
+
+        BankingService service = new BankingService(
+                new AuditLogger(),
+                transactionRepository,
+                accountRepository,
+                failingProvider);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.deposit(account, 200));
+
+        assertEquals("Database transaction failed", exception.getMessage());
+        assertSame(
+                connectionFailure,
+                exception.getCause(),
+                "Original connection failure should be preserved");
+
+        assertEquals(
+                1000.0,
+                account.getBalance(),
+                0.001,
+                "Balance should be restored after connection acquisition fails");
     }
 
 }
