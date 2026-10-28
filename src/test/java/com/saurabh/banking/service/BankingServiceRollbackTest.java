@@ -524,4 +524,111 @@ class BankingServiceRollbackTest {
                 "Balance should be restored after connection acquisition fails");
     }
 
+    @Test
+    void commitFailureShouldRollbackAndRestoreBalance() {
+        SQLException commitFailure = new SQLException("Simulated commit failure");
+
+        AtomicBoolean rollbackCalled = new AtomicBoolean(false);
+        AtomicBoolean closeCalled = new AtomicBoolean(false);
+
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[] { Connection.class },
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setAutoCommit":
+                            return null;
+
+                        case "commit":
+                            throw commitFailure;
+
+                        case "rollback":
+                            rollbackCalled.set(true);
+                            return null;
+
+                        case "close":
+                            closeCalled.set(true);
+                            return null;
+
+                        case "isClosed":
+                            return closeCalled.get();
+
+                        default:
+                            Class<?> returnType = method.getReturnType();
+
+                            if (returnType == boolean.class) {
+                                return false;
+                            }
+                            if (returnType == int.class) {
+                                return 0;
+                            }
+                            if (returnType == long.class) {
+                                return 0L;
+                            }
+
+                            return null;
+                    }
+                });
+
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123");
+
+        SavingsAccount account = new SavingsAccount(
+                100L, customer, 1000);
+
+        ConnectionProvider provider = () -> connection;
+
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) {
+                // Simulate a successful balance update before commit.
+            }
+        };
+
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx) {
+                // Simulate a successful transaction save before commit.
+            }
+        };
+
+        BankingService service = new BankingService(
+                new AuditLogger(),
+                transactionRepository,
+                accountRepository,
+                provider);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.deposit(account, 200));
+
+        assertEquals(
+                "Database transaction failed",
+                exception.getMessage());
+
+        assertSame(
+                commitFailure,
+                exception.getCause(),
+                "Original commit failure should be preserved");
+
+        assertTrue(
+                rollbackCalled.get(),
+                "Rollback should be attempted after commit failure");
+
+        assertTrue(
+                closeCalled.get(),
+                "Connection should be closed after commit failure");
+
+        assertEquals(
+                1000.0,
+                account.getBalance(),
+                0.001,
+                "Balance should be restored after commit failure");
+    }
+
 }
