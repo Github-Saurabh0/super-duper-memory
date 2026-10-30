@@ -746,7 +746,115 @@ void rollbackFailureAfterCommitFailureShouldPreserveCommitException() {
             "The in-memory balance should be restored");
 }
 
+@Test
+void setAutoCommitFailureShouldRollbackAndRestoreBalance() {
+    SQLException autoCommitFailure =
+            new SQLException("Simulated setAutoCommit failure");
 
+    AtomicBoolean rollbackCalled = new AtomicBoolean(false);
+    AtomicBoolean closeCalled = new AtomicBoolean(false);
+    AtomicBoolean balanceUpdateCalled = new AtomicBoolean(false);
+
+    Connection connection = (Connection) Proxy.newProxyInstance(
+            Connection.class.getClassLoader(),
+            new Class<?>[]{Connection.class},
+            (proxy, method, args) -> {
+                switch (method.getName()) {
+                    case "setAutoCommit":
+                        throw autoCommitFailure;
+
+                    case "rollback":
+                        rollbackCalled.set(true);
+                        return null;
+
+                    case "close":
+                        closeCalled.set(true);
+                        return null;
+
+                    case "isClosed":
+                        return closeCalled.get();
+
+                    case "isWrapperFor":
+                        return false;
+
+                    case "unwrap":
+                        throw new SQLException("Not a wrapper");
+
+                    case "toString":
+                        return "TestConnection";
+
+                    default:
+                        throw new UnsupportedOperationException(
+                                "Unexpected Connection call: "
+                                        + method.getName());
+                }
+            });
+
+    Customer customer = new Customer(
+            1L, "Test User", "test@example.com", "123");
+
+    SavingsAccount account = new SavingsAccount(
+            100L, customer, 1000);
+
+    ConnectionProvider provider = () -> connection;
+
+    AccountRepository accountRepository = new AccountRepository() {
+        @Override
+        public void updateBalance(
+                Connection conn,
+                Long accountNumber,
+                java.math.BigDecimal balance) {
+            balanceUpdateCalled.set(true);
+        }
+    };
+
+    TransactionRepository transactionRepository =
+            new TransactionRepository() {
+                @Override
+                public void save(
+                        Connection conn,
+                        com.saurabh.banking.transaction.Transaction tx) {
+                    fail("Transaction should not be saved");
+                }
+            };
+
+    BankingService service = new BankingService(
+            new AuditLogger(),
+            transactionRepository,
+            accountRepository,
+            provider);
+
+    IllegalStateException exception = assertThrows(
+            IllegalStateException.class,
+            () -> service.deposit(account, 200));
+
+    assertEquals(
+            "Database transaction failed",
+            exception.getMessage());
+
+    assertSame(
+            autoCommitFailure,
+            exception.getCause(),
+            "Original setAutoCommit failure should be preserved");
+
+    assertTrue(
+            rollbackCalled.get(),
+            "Rollback should be attempted after setAutoCommit fails");
+
+    assertTrue(
+            closeCalled.get(),
+            "Connection should be closed after failure");
+
+    assertFalse(
+            balanceUpdateCalled.get(),
+            "Balance update should not be reached");
+
+    assertEquals(
+            1000.0,
+            account.getBalance(),
+            0.001,
+            "In-memory balance should be restored");
+}
 
 
 
