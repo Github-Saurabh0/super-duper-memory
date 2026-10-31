@@ -631,231 +631,339 @@ class BankingServiceRollbackTest {
                 "Balance should be restored after commit failure");
     }
 
-@Test
-void rollbackFailureAfterCommitFailureShouldPreserveCommitException() {
-    SQLException commitFailure =
-            new SQLException("Simulated commit failure");
+    @Test
+    void rollbackFailureAfterCommitFailureShouldPreserveCommitException() {
+        SQLException commitFailure = new SQLException("Simulated commit failure");
 
-    SQLException rollbackFailure =
-            new SQLException("Simulated rollback failure");
+        SQLException rollbackFailure = new SQLException("Simulated rollback failure");
 
-    AtomicBoolean rollbackCalled = new AtomicBoolean(false);
-    AtomicBoolean closeCalled = new AtomicBoolean(false);
+        AtomicBoolean rollbackCalled = new AtomicBoolean(false);
+        AtomicBoolean closeCalled = new AtomicBoolean(false);
 
-    Connection connection = (Connection) Proxy.newProxyInstance(
-            Connection.class.getClassLoader(),
-            new Class<?>[]{Connection.class},
-            (proxy, method, args) -> {
-                switch (method.getName()) {
-                    case "setAutoCommit":
-                        return null;
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[] { Connection.class },
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setAutoCommit":
+                            return null;
 
-                    case "commit":
-                        throw commitFailure;
+                        case "commit":
+                            throw commitFailure;
 
-                    case "rollback":
-                        rollbackCalled.set(true);
-                        throw rollbackFailure;
+                        case "rollback":
+                            rollbackCalled.set(true);
+                            throw rollbackFailure;
 
-                    case "close":
-                        closeCalled.set(true);
-                        return null;
+                        case "close":
+                            closeCalled.set(true);
+                            return null;
 
-                    case "isClosed":
-                        return closeCalled.get();
+                        case "isClosed":
+                            return closeCalled.get();
 
-                    case "isWrapperFor":
-                        return false;
+                        case "isWrapperFor":
+                            return false;
 
-                    case "unwrap":
-                        throw new SQLException("Not a wrapper");
+                        case "unwrap":
+                            throw new SQLException("Not a wrapper");
 
-                    case "toString":
-                        return "TestConnection";
+                        case "toString":
+                            return "TestConnection";
 
-                    default:
-                        throw new UnsupportedOperationException(
-                                "Unexpected Connection call: "
-                                        + method.getName());
-                }
-            });
+                        default:
+                            throw new UnsupportedOperationException(
+                                    "Unexpected Connection call: "
+                                            + method.getName());
+                    }
+                });
 
-    Customer customer = new Customer(
-            1L, "Test User", "test@example.com", "123");
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123");
 
-    SavingsAccount account = new SavingsAccount(
-            100L, customer, 1000);
+        SavingsAccount account = new SavingsAccount(
+                100L, customer, 1000);
 
-    ConnectionProvider provider = () -> connection;
+        ConnectionProvider provider = () -> connection;
 
-    AccountRepository accountRepository = new AccountRepository() {
-        @Override
-        public void updateBalance(
-                Connection conn,
-                Long accountNumber,
-                java.math.BigDecimal balance) {
-            assertSame(connection, conn);
-        }
-    };
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) {
+                assertSame(connection, conn);
+            }
+        };
 
-    TransactionRepository transactionRepository =
-            new TransactionRepository() {
-                @Override
-                public void save(
-                        Connection conn,
-                        com.saurabh.banking.transaction.Transaction tx) {
-                    assertSame(connection, conn);
-                }
-            };
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx) {
+                assertSame(connection, conn);
+            }
+        };
 
-    BankingService service = new BankingService(
-            new AuditLogger(),
-            transactionRepository,
-            accountRepository,
-            provider);
+        BankingService service = new BankingService(
+                new AuditLogger(),
+                transactionRepository,
+                accountRepository,
+                provider);
 
-    IllegalStateException exception = assertThrows(
-            IllegalStateException.class,
-            () -> service.deposit(account, 200));
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.deposit(account, 200));
 
-    assertEquals(
-            "Database transaction failed",
-            exception.getMessage());
+        assertEquals(
+                "Database transaction failed",
+                exception.getMessage());
 
-    assertSame(
-            commitFailure,
-            exception.getCause(),
-            "The original commit failure should remain the primary cause");
+        assertSame(
+                commitFailure,
+                exception.getCause(),
+                "The original commit failure should remain the primary cause");
 
-    assertEquals(
-            1,
-            commitFailure.getSuppressed().length,
-            "The rollback failure should be suppressed on the commit failure");
+        assertEquals(
+                1,
+                commitFailure.getSuppressed().length,
+                "The rollback failure should be suppressed on the commit failure");
 
-    assertSame(
-            rollbackFailure,
-            commitFailure.getSuppressed()[0]);
+        assertSame(
+                rollbackFailure,
+                commitFailure.getSuppressed()[0]);
 
-    assertTrue(rollbackCalled.get(), "Rollback should be attempted");
-    assertTrue(closeCalled.get(), "Connection should still be closed");
+        assertTrue(rollbackCalled.get(), "Rollback should be attempted");
+        assertTrue(closeCalled.get(), "Connection should still be closed");
 
-    assertEquals(
-            1000.0,
-            account.getBalance(),
-            0.001,
-            "The in-memory balance should be restored");
-}
+        assertEquals(
+                1000.0,
+                account.getBalance(),
+                0.001,
+                "The in-memory balance should be restored");
+    }
 
-@Test
-void setAutoCommitFailureShouldRollbackAndRestoreBalance() {
-    SQLException autoCommitFailure =
-            new SQLException("Simulated setAutoCommit failure");
+    @Test
+    void setAutoCommitFailureShouldRollbackAndRestoreBalance() {
+        SQLException autoCommitFailure = new SQLException("Simulated setAutoCommit failure");
 
-    AtomicBoolean rollbackCalled = new AtomicBoolean(false);
-    AtomicBoolean closeCalled = new AtomicBoolean(false);
-    AtomicBoolean balanceUpdateCalled = new AtomicBoolean(false);
+        AtomicBoolean rollbackCalled = new AtomicBoolean(false);
+        AtomicBoolean closeCalled = new AtomicBoolean(false);
+        AtomicBoolean balanceUpdateCalled = new AtomicBoolean(false);
 
-    Connection connection = (Connection) Proxy.newProxyInstance(
-            Connection.class.getClassLoader(),
-            new Class<?>[]{Connection.class},
-            (proxy, method, args) -> {
-                switch (method.getName()) {
-                    case "setAutoCommit":
-                        throw autoCommitFailure;
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[] { Connection.class },
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setAutoCommit":
+                            throw autoCommitFailure;
 
-                    case "rollback":
-                        rollbackCalled.set(true);
-                        return null;
+                        case "rollback":
+                            rollbackCalled.set(true);
+                            return null;
 
-                    case "close":
-                        closeCalled.set(true);
-                        return null;
+                        case "close":
+                            closeCalled.set(true);
+                            return null;
 
-                    case "isClosed":
-                        return closeCalled.get();
+                        case "isClosed":
+                            return closeCalled.get();
 
-                    case "isWrapperFor":
-                        return false;
+                        case "isWrapperFor":
+                            return false;
 
-                    case "unwrap":
-                        throw new SQLException("Not a wrapper");
+                        case "unwrap":
+                            throw new SQLException("Not a wrapper");
 
-                    case "toString":
-                        return "TestConnection";
+                        case "toString":
+                            return "TestConnection";
 
-                    default:
-                        throw new UnsupportedOperationException(
-                                "Unexpected Connection call: "
-                                        + method.getName());
-                }
-            });
+                        default:
+                            throw new UnsupportedOperationException(
+                                    "Unexpected Connection call: "
+                                            + method.getName());
+                    }
+                });
 
-    Customer customer = new Customer(
-            1L, "Test User", "test@example.com", "123");
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123");
 
-    SavingsAccount account = new SavingsAccount(
-            100L, customer, 1000);
+        SavingsAccount account = new SavingsAccount(
+                100L, customer, 1000);
 
-    ConnectionProvider provider = () -> connection;
+        ConnectionProvider provider = () -> connection;
 
-    AccountRepository accountRepository = new AccountRepository() {
-        @Override
-        public void updateBalance(
-                Connection conn,
-                Long accountNumber,
-                java.math.BigDecimal balance) {
-            balanceUpdateCalled.set(true);
-        }
-    };
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) {
+                balanceUpdateCalled.set(true);
+            }
+        };
 
-    TransactionRepository transactionRepository =
-            new TransactionRepository() {
-                @Override
-                public void save(
-                        Connection conn,
-                        com.saurabh.banking.transaction.Transaction tx) {
-                    fail("Transaction should not be saved");
-                }
-            };
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx) {
+                fail("Transaction should not be saved");
+            }
+        };
 
-    BankingService service = new BankingService(
-            new AuditLogger(),
-            transactionRepository,
-            accountRepository,
-            provider);
+        BankingService service = new BankingService(
+                new AuditLogger(),
+                transactionRepository,
+                accountRepository,
+                provider);
 
-    IllegalStateException exception = assertThrows(
-            IllegalStateException.class,
-            () -> service.deposit(account, 200));
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.deposit(account, 200));
 
-    assertEquals(
-            "Database transaction failed",
-            exception.getMessage());
+        assertEquals(
+                "Database transaction failed",
+                exception.getMessage());
 
-    assertSame(
-            autoCommitFailure,
-            exception.getCause(),
-            "Original setAutoCommit failure should be preserved");
+        assertSame(
+                autoCommitFailure,
+                exception.getCause(),
+                "Original setAutoCommit failure should be preserved");
 
-    assertTrue(
-            rollbackCalled.get(),
-            "Rollback should be attempted after setAutoCommit fails");
+        assertTrue(
+                rollbackCalled.get(),
+                "Rollback should be attempted after setAutoCommit fails");
 
-    assertTrue(
-            closeCalled.get(),
-            "Connection should be closed after failure");
+        assertTrue(
+                closeCalled.get(),
+                "Connection should be closed after failure");
 
-    assertFalse(
-            balanceUpdateCalled.get(),
-            "Balance update should not be reached");
+        assertFalse(
+                balanceUpdateCalled.get(),
+                "Balance update should not be reached");
 
-    assertEquals(
-            1000.0,
-            account.getBalance(),
-            0.001,
-            "In-memory balance should be restored");
-}
+        assertEquals(
+                1000.0,
+                account.getBalance(),
+                0.001,
+                "In-memory balance should be restored");
+    }
 
+    @Test
+    void rollbackFailureAfterSetAutoCommitFailureShouldPreserveOriginalException() {
+        SQLException autoCommitFailure = new SQLException("Simulated setAutoCommit failure");
 
+        SQLException rollbackFailure = new SQLException("Simulated rollback failure");
+
+        AtomicBoolean rollbackCalled = new AtomicBoolean(false);
+        AtomicBoolean closeCalled = new AtomicBoolean(false);
+        AtomicBoolean balanceUpdateCalled = new AtomicBoolean(false);
+
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[] { Connection.class },
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setAutoCommit":
+                            throw autoCommitFailure;
+
+                        case "rollback":
+                            rollbackCalled.set(true);
+                            throw rollbackFailure;
+
+                        case "close":
+                            closeCalled.set(true);
+                            return null;
+
+                        case "isClosed":
+                            return closeCalled.get();
+
+                        case "isWrapperFor":
+                            return false;
+
+                        case "unwrap":
+                            throw new SQLException("Not a wrapper");
+
+                        case "toString":
+                            return "TestConnection";
+
+                        default:
+                            throw new UnsupportedOperationException(
+                                    "Unexpected Connection call: "
+                                            + method.getName());
+                    }
+                });
+
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123");
+
+        SavingsAccount account = new SavingsAccount(
+                100L, customer, 1000);
+
+        ConnectionProvider provider = () -> connection;
+
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) {
+                balanceUpdateCalled.set(true);
+            }
+        };
+
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx) {
+                fail("Transaction should not be saved");
+            }
+        };
+
+        BankingService service = new BankingService(
+                new AuditLogger(),
+                transactionRepository,
+                accountRepository,
+                provider);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.deposit(account, 200));
+
+        assertEquals(
+                "Database transaction failed",
+                exception.getMessage());
+
+        assertSame(
+                autoCommitFailure,
+                exception.getCause(),
+                "Original setAutoCommit failure should be preserved");
+
+        assertArrayEquals(
+                new Throwable[] { rollbackFailure },
+                autoCommitFailure.getSuppressed(),
+                "Rollback failure should be suppressed on the original exception");
+
+        assertTrue(
+                rollbackCalled.get(),
+                "Rollback should be attempted");
+
+        assertTrue(
+                closeCalled.get(),
+                "Connection should be closed after failure");
+
+        assertFalse(
+                balanceUpdateCalled.get(),
+                "Balance update should not be reached");
+
+        assertEquals(
+                1000.0,
+                account.getBalance(),
+                0.001,
+                "In-memory balance should be restored");
+    }
 
 }
