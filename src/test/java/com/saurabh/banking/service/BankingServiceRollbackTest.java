@@ -1074,4 +1074,122 @@ class BankingServiceRollbackTest {
                 "In-memory balance should be restored");
     }
 
+    @Test
+    void transferRollbackFailureShouldPreserveUpdateFailureAndRestoreBalances() {
+        SQLException updateFailure = new SQLException("Simulated second account update failure");
+
+        SQLException rollbackFailure = new SQLException("Simulated rollback failure");
+
+        AtomicBoolean rollbackCalled = new AtomicBoolean(false);
+        AtomicBoolean closeCalled = new AtomicBoolean(false);
+        AtomicBoolean transactionSaveCalled = new AtomicBoolean(false);
+        AtomicBoolean firstUpdateCompleted = new AtomicBoolean(false);
+
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[] { Connection.class },
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setAutoCommit":
+                            return null;
+
+                        case "rollback":
+                            rollbackCalled.set(true);
+                            throw rollbackFailure;
+
+                        case "close":
+                            closeCalled.set(true);
+                            return null;
+
+                        case "isClosed":
+                            return closeCalled.get();
+
+                        case "isWrapperFor":
+                            return false;
+
+                        case "unwrap":
+                            throw new SQLException("Not a wrapper");
+
+                        case "toString":
+                            return "TestConnection";
+
+                        default:
+                            throw new UnsupportedOperationException(
+                                    "Unexpected Connection call: "
+                                            + method.getName());
+                    }
+                });
+
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123");
+
+        SavingsAccount from = new SavingsAccount(100L, customer, 1000);
+        SavingsAccount to = new SavingsAccount(200L, customer, 500);
+
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) throws SQLException {
+
+                if (accountNumber.equals(100L)) {
+                    firstUpdateCompleted.set(true);
+                    return;
+                }
+
+                if (accountNumber.equals(200L)) {
+                    throw updateFailure;
+                }
+
+                fail("Unexpected account number: " + accountNumber);
+            }
+        };
+
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx) {
+                transactionSaveCalled.set(true);
+                fail("Transaction should not be saved");
+            }
+        };
+
+        BankingService service = new BankingService(
+                new AuditLogger(),
+                transactionRepository,
+                accountRepository,
+                () -> connection);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.transfer(from, to, 200, "TRANSFER"));
+
+        assertEquals(
+                "Database transaction failed",
+                exception.getMessage());
+
+        assertSame(
+                updateFailure,
+                exception.getCause(),
+                "Original second update failure should be preserved");
+
+        assertArrayEquals(
+                new Throwable[] { rollbackFailure },
+                updateFailure.getSuppressed(),
+                "Rollback failure should be suppressed on the original exception");
+
+        assertTrue(firstUpdateCompleted.get());
+        assertTrue(rollbackCalled.get(), "Rollback should be attempted");
+        assertTrue(closeCalled.get(), "Connection should be closed");
+
+        assertFalse(
+                transactionSaveCalled.get(),
+                "Transaction should not be saved after update failure");
+
+        assertEquals(1000.0, from.getBalance(), 0.001);
+        assertEquals(500.0, to.getBalance(), 0.001);
+    }
+
 }
