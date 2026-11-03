@@ -1192,4 +1192,118 @@ class BankingServiceRollbackTest {
         assertEquals(500.0, to.getBalance(), 0.001);
     }
 
+    @Test
+    void transactionSaveAndRollbackFailureShouldPreserveOriginalException() {
+        SQLException saveFailure = new SQLException("Simulated transaction save failure");
+
+        SQLException rollbackFailure = new SQLException("Simulated rollback failure");
+
+        AtomicBoolean rollbackCalled = new AtomicBoolean(false);
+        AtomicBoolean closeCalled = new AtomicBoolean(false);
+        AtomicBoolean balanceUpdateCalled = new AtomicBoolean(false);
+
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[] { Connection.class },
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setAutoCommit":
+                            return null;
+
+                        case "rollback":
+                            rollbackCalled.set(true);
+                            throw rollbackFailure;
+
+                        case "close":
+                            closeCalled.set(true);
+                            return null;
+
+                        case "isClosed":
+                            return closeCalled.get();
+
+                        case "isWrapperFor":
+                            return false;
+
+                        case "unwrap":
+                            throw new SQLException("Not a wrapper");
+
+                        case "toString":
+                            return "TestConnection";
+
+                        default:
+                            throw new UnsupportedOperationException(
+                                    "Unexpected Connection call: "
+                                            + method.getName());
+                    }
+                });
+
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123");
+
+        SavingsAccount account = new SavingsAccount(
+                100L, customer, 1000);
+
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) {
+                balanceUpdateCalled.set(true);
+            }
+        };
+
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx)
+                    throws SQLException {
+                throw saveFailure;
+            }
+        };
+
+        BankingService service = new BankingService(
+                new AuditLogger(),
+                transactionRepository,
+                accountRepository,
+                () -> connection);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.deposit(account, 200));
+
+        assertEquals(
+                "Database transaction failed",
+                exception.getMessage());
+
+        assertSame(
+                saveFailure,
+                exception.getCause(),
+                "Original transaction save failure should be preserved");
+
+        assertArrayEquals(
+                new Throwable[] { rollbackFailure },
+                saveFailure.getSuppressed(),
+                "Rollback failure should be suppressed on save failure");
+
+        assertTrue(
+                balanceUpdateCalled.get(),
+                "Account balance update should execute before transaction save");
+
+        assertTrue(
+                rollbackCalled.get(),
+                "Rollback should be attempted");
+
+        assertTrue(
+                closeCalled.get(),
+                "Connection should be closed");
+
+        assertEquals(
+                1000.0,
+                account.getBalance(),
+                0.001,
+                "In-memory balance should be restored");
+    }
+
 }
