@@ -466,6 +466,22 @@ class BankingServiceRollbackTest {
                 saveFailure,
                 exception.getCause(),
                 "Original transaction failure should be preserved");
+
+        assertEquals(
+                1,
+                exception.getSuppressed().length,
+                "Connection close failure should be suppressed");
+
+        IllegalStateException suppressedCloseFailure = (IllegalStateException) exception.getSuppressed()[0];
+
+        assertEquals(
+                "Failed to close database connection",
+                suppressedCloseFailure.getMessage());
+
+        assertSame(
+                closeFailure,
+                suppressedCloseFailure.getCause(),
+                "Original connection close failure should be preserved");
     }
 
     @Test
