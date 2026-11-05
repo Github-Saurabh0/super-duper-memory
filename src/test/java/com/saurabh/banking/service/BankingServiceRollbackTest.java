@@ -534,6 +534,11 @@ class BankingServiceRollbackTest {
                 "Original connection failure should be preserved");
 
         assertEquals(
+        0,
+        exception.getSuppressed().length,
+        "No suppressed exception should exist when connection acquisition fails");
+
+        assertEquals(
                 1000.0,
                 account.getBalance(),
                 0.001,
