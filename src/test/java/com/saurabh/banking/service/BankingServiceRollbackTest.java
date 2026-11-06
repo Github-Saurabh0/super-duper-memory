@@ -534,9 +534,9 @@ class BankingServiceRollbackTest {
                 "Original connection failure should be preserved");
 
         assertEquals(
-        0,
-        exception.getSuppressed().length,
-        "No suppressed exception should exist when connection acquisition fails");
+                0,
+                exception.getSuppressed().length,
+                "No suppressed exception should exist when connection acquisition fails");
 
         assertEquals(
                 1000.0,
@@ -985,11 +985,13 @@ class BankingServiceRollbackTest {
                 account.getBalance(),
                 0.001,
                 "In-memory balance should be restored");
+
     }
 
     @Test
     void firstBalanceUpdateFailureShouldRollbackAndRestoreBalance() {
         SQLException updateFailure = new SQLException("Simulated first balance update failure");
+        SQLException rollbackFailure = new SQLException("Simulated rollback failure");
 
         AtomicBoolean rollbackCalled = new AtomicBoolean(false);
         AtomicBoolean closeCalled = new AtomicBoolean(false);
@@ -1005,7 +1007,7 @@ class BankingServiceRollbackTest {
 
                         case "rollback":
                             rollbackCalled.set(true);
-                            return null;
+                            throw rollbackFailure;
 
                         case "close":
                             closeCalled.set(true);
@@ -1093,6 +1095,24 @@ class BankingServiceRollbackTest {
                 account.getBalance(),
                 0.001,
                 "In-memory balance should be restored");
+        assertSame(
+                updateFailure,
+                exception.getCause(),
+                "Original balance update failure should be preserved");
+
+        assertEquals(
+                1,
+                exception.getCause().getSuppressed().length,
+                "Rollback failure should be suppressed on the original update failure");
+
+        assertSame(
+                rollbackFailure,
+                exception.getCause().getSuppressed()[0],
+                "Original rollback failure should be preserved");
+
+        assertTrue(
+                rollbackCalled.get(),
+                "Rollback should be attempted after update failure");
     }
 
     @Test
