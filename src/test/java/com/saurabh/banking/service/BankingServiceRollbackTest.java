@@ -1565,4 +1565,115 @@ class BankingServiceRollbackTest {
                 0.001,
                 "In-memory balance should be restored after withdrawal commit failure");
     }
+
+    @Test
+    void withdrawalTransactionSaveFailureShouldRollbackAndRestoreBalance() {
+        SQLException saveFailure = new SQLException("Simulated withdrawal transaction save failure");
+
+        AtomicBoolean rollbackCalled = new AtomicBoolean(false);
+        AtomicBoolean closeCalled = new AtomicBoolean(false);
+        AtomicBoolean transactionSaveCalled = new AtomicBoolean(false);
+
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[] { Connection.class },
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setAutoCommit":
+                            return null;
+
+                        case "commit":
+                            return null;
+
+                        case "rollback":
+                            rollbackCalled.set(true);
+                            return null;
+
+                        case "close":
+                            closeCalled.set(true);
+                            return null;
+
+                        case "isClosed":
+                            return closeCalled.get();
+
+                        case "isWrapperFor":
+                            return false;
+
+                        case "unwrap":
+                            throw new SQLException("Not a wrapper");
+
+                        case "toString":
+                            return "TestConnection";
+
+                        default:
+                            throw new UnsupportedOperationException(
+                                    "Unexpected Connection call: "
+                                            + method.getName());
+                    }
+                });
+
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123");
+
+        SavingsAccount account = new SavingsAccount(
+                100L, customer, 1000);
+
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) {
+                assertSame(connection, conn);
+            }
+        };
+
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx)
+                    throws SQLException {
+                transactionSaveCalled.set(true);
+                throw saveFailure;
+            }
+        };
+
+        BankingService service = new BankingService(
+                new AuditLogger(),
+                transactionRepository,
+                accountRepository,
+                () -> connection);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.withdraw(account, 200));
+
+        assertEquals(
+                "Database transaction failed",
+                exception.getMessage());
+
+        assertSame(
+                saveFailure,
+                exception.getCause(),
+                "Original transaction save failure should be preserved");
+
+        assertTrue(
+                transactionSaveCalled.get(),
+                "Transaction save should be attempted");
+
+        assertTrue(
+                rollbackCalled.get(),
+                "Rollback should be called after transaction save failure");
+
+        assertTrue(
+                closeCalled.get(),
+                "Connection should be closed after failure");
+
+        assertEquals(
+                1000.0,
+                account.getBalance(),
+                0.001,
+                "In-memory balance should be restored after transaction save failure");
+    }
 }
