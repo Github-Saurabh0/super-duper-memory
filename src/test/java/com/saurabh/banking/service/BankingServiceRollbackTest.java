@@ -1676,4 +1676,122 @@ class BankingServiceRollbackTest {
                 0.001,
                 "In-memory balance should be restored after transaction save failure");
     }
+
+    @Test
+    void withdrawalRollbackFailureAfterCommitFailureShouldPreserveCommitException() {
+        SQLException commitFailure = new SQLException("Simulated withdrawal commit failure");
+
+        SQLException rollbackFailure = new SQLException("Simulated withdrawal rollback failure");
+
+        AtomicBoolean rollbackCalled = new AtomicBoolean(false);
+        AtomicBoolean closeCalled = new AtomicBoolean(false);
+
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[] { Connection.class },
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setAutoCommit":
+                            return null;
+
+                        case "commit":
+                            throw commitFailure;
+
+                        case "rollback":
+                            rollbackCalled.set(true);
+                            throw rollbackFailure;
+
+                        case "close":
+                            closeCalled.set(true);
+                            return null;
+
+                        case "isClosed":
+                            return closeCalled.get();
+
+                        case "isWrapperFor":
+                            return false;
+
+                        case "unwrap":
+                            throw new SQLException("Not a wrapper");
+
+                        case "toString":
+                            return "TestConnection";
+
+                        default:
+                            throw new UnsupportedOperationException(
+                                    "Unexpected Connection call: "
+                                            + method.getName());
+                    }
+                });
+
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123");
+
+        SavingsAccount account = new SavingsAccount(
+                100L, customer, 1000);
+
+        ConnectionProvider provider = () -> connection;
+
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) {
+                assertSame(connection, conn);
+            }
+        };
+
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx) {
+                assertSame(connection, conn);
+            }
+        };
+
+        BankingService service = new BankingService(
+                new AuditLogger(),
+                transactionRepository,
+                accountRepository,
+                provider);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.withdraw(account, 200));
+
+        assertEquals(
+                "Database transaction failed",
+                exception.getMessage());
+
+        assertSame(
+                commitFailure,
+                exception.getCause(),
+                "The original commit failure should remain the primary cause");
+
+        assertEquals(
+                1,
+                commitFailure.getSuppressed().length,
+                "The rollback failure should be suppressed on the commit failure");
+
+        assertSame(
+                rollbackFailure,
+                commitFailure.getSuppressed()[0],
+                "The original rollback failure should be preserved");
+
+        assertTrue(
+                rollbackCalled.get(),
+                "Rollback should be attempted after commit failure");
+
+        assertTrue(
+                closeCalled.get(),
+                "Connection should still be closed");
+
+        assertEquals(
+                1000.0,
+                account.getBalance(),
+                0.001,
+                "The in-memory balance should be restored");
+    }
 }
