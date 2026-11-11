@@ -1794,4 +1794,125 @@ class BankingServiceRollbackTest {
                 0.001,
                 "The in-memory balance should be restored");
     }
+
+    @Test
+    void withdrawalShouldNotRestoreBalanceWhenAuditLoggingFailsAfterCommit() {
+        IllegalStateException auditFailure = new IllegalStateException("Simulated audit logging failure");
+
+        AtomicBoolean commitCalled = new AtomicBoolean(false);
+        AtomicBoolean rollbackCalled = new AtomicBoolean(false);
+        AtomicBoolean closeCalled = new AtomicBoolean(false);
+        AtomicBoolean transactionSaveCalled = new AtomicBoolean(false);
+
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[] { Connection.class },
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setAutoCommit":
+                            return null;
+
+                        case "commit":
+                            commitCalled.set(true);
+                            return null;
+
+                        case "rollback":
+                            rollbackCalled.set(true);
+                            return null;
+
+                        case "close":
+                            closeCalled.set(true);
+                            return null;
+
+                        case "isClosed":
+                            return closeCalled.get();
+
+                        case "isWrapperFor":
+                            return false;
+
+                        case "unwrap":
+                            throw new SQLException("Not a wrapper");
+
+                        case "toString":
+                            return "TestConnection";
+
+                        default:
+                            throw new UnsupportedOperationException(
+                                    "Unexpected Connection call: "
+                                            + method.getName());
+                    }
+                });
+
+        Customer customer = new Customer(
+                1L, "Test User", "test@example.com", "123");
+
+        SavingsAccount account = new SavingsAccount(
+                100L, customer, 1000);
+
+        ConnectionProvider provider = () -> connection;
+
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) {
+                assertSame(connection, conn);
+            }
+        };
+
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx) {
+                transactionSaveCalled.set(true);
+                assertSame(connection, conn);
+            }
+        };
+
+        AuditLogger failingAuditLogger = new AuditLogger() {
+            @Override
+            public void log(String event) {
+                throw auditFailure;
+            }
+        };
+
+        BankingService service = new BankingService(
+                failingAuditLogger,
+                transactionRepository,
+                accountRepository,
+                provider);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.withdraw(account, 200));
+
+        assertSame(
+                auditFailure,
+                exception,
+                "Original audit failure should be propagated");
+
+        assertTrue(
+                transactionSaveCalled.get(),
+                "Transaction should be saved before audit logging");
+
+        assertTrue(
+                commitCalled.get(),
+                "Database transaction should be committed before audit logging");
+
+        assertFalse(
+                rollbackCalled.get(),
+                "Rollback should not occur after a successful commit");
+
+        assertTrue(
+                closeCalled.get(),
+                "Connection should be closed after successful commit");
+
+        assertEquals(
+                800.0,
+                account.getBalance(),
+                0.001,
+                "Balance should remain changed because database commit succeeded");
+    }
 }
