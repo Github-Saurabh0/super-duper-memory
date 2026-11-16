@@ -2488,4 +2488,97 @@ class BankingServiceRollbackTest {
                 "Target balance should be restored after transaction failure");
     }
 
+    @Test
+    void transferConnectionAcquisitionFailureShouldRestoreBalances() {
+        SQLException connectionFailure = new SQLException("Simulated connection acquisition failure");
+
+        AtomicBoolean updateBalanceCalled = new AtomicBoolean(false);
+
+        Customer customer = new Customer(
+                1L,
+                "Test User",
+                "test@example.com",
+                "123");
+
+        SavingsAccount sourceAccount = new SavingsAccount(
+                100L,
+                customer,
+                1000);
+
+        SavingsAccount targetAccount = new SavingsAccount(
+                200L,
+                customer,
+                500);
+
+        ConnectionProvider provider = () -> {
+            throw connectionFailure;
+        };
+
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) {
+
+                updateBalanceCalled.set(true);
+            }
+        };
+
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx) {
+                fail("Transaction should not be saved");
+            }
+        };
+
+        AuditLogger auditLogger = new AuditLogger() {
+            @Override
+            public void log(String event) {
+                fail("Audit should not be called");
+            }
+        };
+
+        BankingService service = new BankingService(
+                auditLogger,
+                transactionRepository,
+                accountRepository,
+                provider);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.transfer(
+                        sourceAccount,
+                        targetAccount,
+                        200,
+                        "Test transfer"));
+
+        assertEquals(
+                "Database transaction failed",
+                exception.getMessage());
+
+        assertSame(
+                connectionFailure,
+                exception.getCause(),
+                "Original connection failure should be preserved");
+
+        assertFalse(
+                updateBalanceCalled.get(),
+                "Balance update should not happen without a connection");
+
+        assertEquals(
+                1000.0,
+                sourceAccount.getBalance(),
+                0.001,
+                "Source balance should remain unchanged");
+
+        assertEquals(
+                500.0,
+                targetAccount.getBalance(),
+                0.001,
+                "Target balance should remain unchanged");
+    }
+
 }
