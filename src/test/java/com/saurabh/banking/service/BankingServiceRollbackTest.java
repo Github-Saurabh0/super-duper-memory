@@ -3239,4 +3239,163 @@ class BankingServiceRollbackTest {
                 0.001,
                 "Target balance should be restored");
     }
+
+    @Test
+    void transferShouldPreserveBalancesWhenAuditLoggingThrowsRuntimeExceptionAfterCommit() {
+        IllegalStateException auditFailure = new IllegalStateException(
+                "Simulated audit runtime failure");
+
+        AtomicBoolean firstUpdateCalled = new AtomicBoolean(false);
+        AtomicBoolean secondUpdateCalled = new AtomicBoolean(false);
+        AtomicBoolean transactionSaveCalled = new AtomicBoolean(false);
+        AtomicBoolean commitCalled = new AtomicBoolean(false);
+        AtomicBoolean closeCalled = new AtomicBoolean(false);
+
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[] { Connection.class },
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setAutoCommit":
+                            return null;
+
+                        case "commit":
+                            commitCalled.set(true);
+                            return null;
+
+                        case "rollback":
+                            fail("Rollback should not be called after successful commit");
+
+                        case "close":
+                            closeCalled.set(true);
+                            return null;
+
+                        case "isClosed":
+                            return closeCalled.get();
+
+                        case "isWrapperFor":
+                            return false;
+
+                        case "unwrap":
+                            throw new SQLException("Not a wrapper");
+
+                        case "toString":
+                            return "TestConnection";
+
+                        default:
+                            throw new UnsupportedOperationException(
+                                    "Unexpected Connection call: "
+                                            + method.getName());
+                    }
+                });
+
+        Customer customer = new Customer(
+                1L,
+                "Test User",
+                "test@example.com",
+                "123");
+
+        SavingsAccount sourceAccount = new SavingsAccount(
+                100L,
+                customer,
+                1000);
+
+        SavingsAccount targetAccount = new SavingsAccount(
+                200L,
+                customer,
+                500);
+
+        ConnectionProvider provider = () -> connection;
+
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public void updateBalance(
+                    Connection conn,
+                    Long accountNumber,
+                    java.math.BigDecimal balance) {
+
+                assertSame(connection, conn);
+
+                if (accountNumber.equals(100L)) {
+                    firstUpdateCalled.set(true);
+                    return;
+                }
+
+                if (accountNumber.equals(200L)) {
+                    secondUpdateCalled.set(true);
+                    return;
+                }
+
+                fail("Unexpected account number: " + accountNumber);
+            }
+        };
+
+        TransactionRepository transactionRepository = new TransactionRepository() {
+            @Override
+            public void save(
+                    Connection conn,
+                    com.saurabh.banking.transaction.Transaction tx) {
+
+                transactionSaveCalled.set(true);
+            }
+        };
+
+        AuditLogger auditLogger = new AuditLogger() {
+            @Override
+            public void log(String event) {
+                throw auditFailure;
+            }
+        };
+
+        BankingService service = new BankingService(
+                auditLogger,
+                transactionRepository,
+                accountRepository,
+                provider);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.transfer(
+                        sourceAccount,
+                        targetAccount,
+                        200,
+                        "Test transfer"));
+
+        assertSame(
+                auditFailure,
+                exception,
+                "Original audit runtime failure should be propagated");
+
+        assertTrue(
+                firstUpdateCalled.get(),
+                "First account balance update should be attempted");
+
+        assertTrue(
+                secondUpdateCalled.get(),
+                "Second account balance update should be attempted");
+
+        assertTrue(
+                transactionSaveCalled.get(),
+                "Transaction should be saved before commit");
+
+        assertTrue(
+                commitCalled.get(),
+                "Commit should succeed before audit logging");
+
+        assertTrue(
+                closeCalled.get(),
+                "Connection should be closed");
+
+        assertEquals(
+                800.0,
+                sourceAccount.getBalance(),
+                0.001,
+                "Source balance should remain debited after commit");
+
+        assertEquals(
+                700.0,
+                targetAccount.getBalance(),
+                0.001,
+                "Target balance should remain credited after commit");
+    }
 }
